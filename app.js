@@ -17,16 +17,30 @@ app.use(express.urlencoded({ extended: true }));
 
 // cookies and file middleware
 app.use(cookieParser());
-app.use(fileUpload());
+app.use(
+  fileUpload({
+    useTempFiles: true,
+    tempFileDir: "./temp/",
+  })
+);
+
+app.set("view engine", "ejs");
 
 // morgan middleware - logging
 app.use(morgan("tiny"));
 
 //import all routes here
 const home = require("./routes/home");
+const user = require("./routes/user");
 
 // routea middleware
 app.use("/api/v1", home);
+app.use("/api/v1", user);
+
+// test route
+app.get("/signuptest", (req, res) => {
+  res.render("signUpTest");
+});
 
 // exports app.js
 module.exports = app;
