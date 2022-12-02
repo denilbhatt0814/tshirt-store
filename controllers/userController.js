@@ -6,6 +6,7 @@ const fileUpload = require("express-fileupload");
 const mailHelper = require("../utils/emailHelper");
 const cloudinary = require("cloudinary").v2;
 const crypto = require("crypto");
+const CustomError = require("../utils/customError");
 
 exports.signup = BigPromise(async (req, res, next) => {
   let result;
@@ -147,4 +148,76 @@ exports.passwordReset = BigPromise(async (req, res, next) => {
 
   // send a JSON response or send the Token
   cookieToken(user, res);
+});
+
+exports.changePassword = BigPromise(async (req, res, next) => {
+  // fetch user by ID
+  const userId = req.user.id;
+  const user = await User.findById(userId).select("+password");
+
+  // match the old paasword
+  const isCorrectOldPassword = user.isValidPassword(req.body.oldPassword);
+
+  // return error if incorrect pwd
+  if (!isCorrectOldPassword) {
+    return next(new CustomError(`old password is incorrect`, 400));
+  }
+
+  // or store the new pwd
+  user.password = req.body.password;
+
+  await user.save();
+
+  cookieToken(user, res);
+});
+
+exports.getLoggedInUserDetails = BigPromise(async (req, res, next) => {
+  const user = await User.findById(req.user.id);
+
+  res.status(200).json({
+    success: true,
+    user,
+  });
+});
+
+exports.updateUserDetails = BigPromise(async (req, res, next) => {
+  const newData = {
+    name: req.body.name,
+    email: req.body.email,
+  };
+
+  // if asked for photo update
+  if (req.files.photo !== "") {
+    const user = await User.findById(req.user.id);
+
+    const imageId = user.photo.id;
+
+    // delete photo from cloudinary
+    const resp = await cloudinary.uploader.destroy(imageId);
+    // uplaod new photo
+    const result = await cloudinary.uploader.upload(
+      req.files.photo.tempFilePath,
+      {
+        folder: "users",
+        width: 150,
+        crop: "scale",
+      }
+    );
+
+    newData.photo = {
+      id: result.public_id,
+      secure_url: result.secure_url,
+    };
+  }
+
+  const user = await User.findByIdAndUpdate(req.user.id, newData, {
+    new: true,
+    runValidators: true,
+    useFindAndModify: false,
+  });
+
+  res.status(200).json({
+    success: true,
+    user,
+  });
 });
