@@ -1,5 +1,5 @@
 const User = require("../models/user");
-const CustomeErr = require("../utils/customError");
+
 const BigPromise = require("../middlewares/bigPromise");
 const cookieToken = require("../utils/cookieToken");
 const fileUpload = require("express-fileupload");
@@ -44,19 +44,19 @@ exports.login = BigPromise(async (req, res, next) => {
   const { email, password } = req.body;
 
   if (!email || !password) {
-    return next(new CustomeErr("Please provide email and password", 400));
+    return next(new CustomError("Please provide email and password", 400));
   }
 
   // fetch user from db - EXISTANCE
   const user = await User.findOne({ email }).select("+password");
   if (!user) {
-    return next(new CustomeErr("Email or password doesn't exist", 400));
+    return next(new CustomError("Email or password doesn't exist", 400));
   }
 
   // password validation
   const isCorrectPassword = await user.isValidPassword(password);
   if (!isCorrectPassword) {
-    return next(new CustomeErr("Email or password doesn't exist", 400));
+    return next(new CustomError("Email or password doesn't exist", 400));
   }
 
   // generate and send cookie
@@ -82,7 +82,7 @@ exports.forgotPassword = BigPromise(async (req, res, next) => {
 
   // verify user existance
   if (!user) {
-    return next(new CustomeErr(`Email not found registered`, 400));
+    return next(new CustomError(`Email not found registered`, 400));
   }
 
   // generate and store a forgotoken in db
@@ -112,7 +112,7 @@ exports.forgotPassword = BigPromise(async (req, res, next) => {
     user.forgotPasswordExpiry = undefined;
 
     await user.save({ validateBeforeSave: false });
-    return next(new CustomeErr(error.message, 500));
+    return next(new CustomError(error.message, 500));
   }
 });
 
@@ -130,13 +130,13 @@ exports.passwordReset = BigPromise(async (req, res, next) => {
   });
 
   if (!user) {
-    return next(new CustomeErr(`Token is invalid or expired`, 400));
+    return next(new CustomError(`Token is invalid or expired`, 400));
   }
 
   // Matching new password - CONFIRMATION
   if (req.body.password !== req.body.confirmPassword) {
     return next(
-      new CustomeErr(`password and confirm password don't match`, 400)
+      new CustomError(`password and confirm password don't match`, 400)
     );
   }
 
@@ -220,4 +220,71 @@ exports.updateUserDetails = BigPromise(async (req, res, next) => {
     success: true,
     user,
   });
+});
+
+// ADMIN FUNCTIONALITIES
+
+exports.adminAllUsers = BigPromise(async (req, res, next) => {
+  const users = await User.find();
+
+  res.status(200).json({ success: true, users });
+});
+
+exports.adminGetOneUser = BigPromise(async (req, res, next) => {
+  const user = await User.findById(req.params.id);
+
+  if (!user) {
+    return next(new CustomError(`No user found`, 400));
+  }
+
+  res.status(200).json({
+    success: true,
+    user,
+  });
+});
+
+exports.adminUpdateOneUserDetails = BigPromise(async (req, res, next) => {
+  const newData = {
+    name: req.body.name,
+    email: req.body.email,
+    role: req.body.role,
+  };
+
+  const user = await User.findByIdAndUpdate(req.params.id, newData, {
+    new: true,
+    runValidators: true,
+    useFindAndModify: false,
+  });
+
+  res.status(200).json({
+    success: true,
+    user,
+  });
+});
+
+exports.adminDeleteOneUser = BigPromise(async (req, res, next) => {
+  const user = await User.findById(req.params.id);
+
+  if (!user) {
+    return next(new CustomError(`No user found`, 401));
+  }
+
+  const imageId = user.photo.id;
+
+  // delete photo from cloudinary
+  const resp = await cloudinary.uploader.destroy(imageId);
+
+  await user.remove();
+
+  res.status(200).json({
+    success: true,
+  });
+});
+
+// MANAGER FUNCTIONALITIES
+
+exports.managerAllUsers = BigPromise(async (req, res, next) => {
+  const users = await User.find({ role: "user" });
+
+  res.status(200).json({ success: true, users });
 });
